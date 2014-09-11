@@ -1,6 +1,6 @@
-# NitroShare Go
+# NitroShare Daemon
 
-A client for NitroShare written in Go.
+A daemon for NitroShare written in Go.
 
 ## Why?
 
