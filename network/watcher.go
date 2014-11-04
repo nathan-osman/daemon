@@ -8,7 +8,7 @@ import (
 )
 
 // Interval for refreshing the interfaces.
-const refreshDuration = 1 * time.Second
+const refreshDuration = 10 * time.Second
 
 // Monitor for the addition and removal of network interfaces.
 type Watcher struct {
