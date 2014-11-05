@@ -1,7 +1,8 @@
-package network
+package discovery
 
 import (
 	set "github.com/deckarep/golang-set"
+	"github.com/nitroshare/daemon/util"
 	"log"
 	"net"
 	"time"
@@ -11,44 +12,29 @@ import (
 const refreshDuration = 10 * time.Second
 
 // Status update on an interface.
-type Status struct {
+type status struct {
 	Status bool
 	Name   string
 }
 
 // Watcher for the addition and removal of network interfaces.
-type Watcher struct {
-	Stop      chan bool
-	listeners []chan Status
-	oldNames  set.Set
+type watcher struct {
+	StatusChanged *util.Signal
+	oldNames      set.Set
 }
 
 // Create a new watcher.
-func NewWatcher() *Watcher {
-	w := &Watcher{
-		Stop:     make(chan bool, 1),
-		oldNames: set.NewSet(),
+func NewWatcher() *watcher {
+	w := &watcher{
+		StatusChanged: &util.Signal{},
+		oldNames:      set.NewSet(),
 	}
 	go w.watch()
 	return w
 }
 
-// Return a channel for receiving notifications.
-func (w *Watcher) Listen() chan Status {
-	c := make(chan Status)
-	w.listeners = append(w.listeners, c)
-	return c
-}
-
-// Send a message to all listeners.
-func (w *Watcher) notify(status Status) {
-	for _, c := range w.listeners {
-		c <- status
-	}
-}
-
 // Refresh the list of interfaces.
-func (w *Watcher) refresh() error {
+func (w *watcher) refresh() error {
 	newNames := set.NewSet()
 	ifis, err := net.Interfaces()
 	if err != nil {
@@ -60,27 +46,22 @@ func (w *Watcher) refresh() error {
 		}
 	}
 	for name := range newNames.Difference(w.oldNames).Iter() {
-		w.notify(Status{true, name.(string)})
+		w.StatusChanged.Emit(status{true, name.(string)})
 	}
 	for name := range w.oldNames.Difference(newNames).Iter() {
-		w.notify(Status{false, name.(string)})
+		w.StatusChanged.Emit(status{false, name.(string)})
 	}
 	w.oldNames = newNames
 	return nil
 }
 
 // Continuously watch for interface changes.
-func (w *Watcher) watch() {
+func (w *watcher) watch() {
 	w.refresh()
-	t := time.NewTicker(refreshDuration)
-	for {
-		select {
-		case <-t.C:
-			if err := w.refresh(); err != nil {
-				log.Println(err)
-			}
-		case <-w.Stop:
-			return
+	c := time.Tick(refreshDuration)
+	for _ = range c {
+		if err := w.refresh(); err != nil {
+			log.Println(err)
 		}
 	}
 }
