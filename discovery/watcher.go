@@ -2,7 +2,6 @@ package discovery
 
 import (
 	set "github.com/deckarep/golang-set"
-	"github.com/nitroshare/daemon/util"
 	"log"
 	"net"
 	"time"
@@ -11,23 +10,19 @@ import (
 // Interval for refreshing the interfaces.
 const refreshDuration = 10 * time.Second
 
-// Status update on an interface.
-type status struct {
-	Status bool
-	Name   string
-}
-
 // Watcher for the addition and removal of network interfaces.
 type watcher struct {
-	StatusChanged *util.Signal
-	oldNames      set.Set
+	InterfaceAdded   chan string
+	InterfaceRemoved chan string
+	oldNames         set.Set
 }
 
 // Create a new watcher.
 func NewWatcher() *watcher {
 	w := &watcher{
-		StatusChanged: &util.Signal{},
-		oldNames:      set.NewSet(),
+		InterfaceAdded:   make(chan string),
+		InterfaceRemoved: make(chan string),
+		oldNames:         set.NewSet(),
 	}
 	go w.watch()
 	return w
@@ -46,10 +41,10 @@ func (w *watcher) refresh() error {
 		}
 	}
 	for name := range newNames.Difference(w.oldNames).Iter() {
-		w.StatusChanged.Emit(status{true, name.(string)})
+		w.InterfaceAdded <- name.(string)
 	}
 	for name := range w.oldNames.Difference(newNames).Iter() {
-		w.StatusChanged.Emit(status{false, name.(string)})
+		w.InterfaceRemoved <- name.(string)
 	}
 	w.oldNames = newNames
 	return nil
@@ -58,8 +53,7 @@ func (w *watcher) refresh() error {
 // Continuously watch for interface changes.
 func (w *watcher) watch() {
 	w.refresh()
-	c := time.Tick(refreshDuration)
-	for _ = range c {
+	for _ = range time.Tick(refreshDuration) {
 		if err := w.refresh(); err != nil {
 			log.Println(err)
 		}
